@@ -1,7 +1,8 @@
 import os 
 import time 
 import datetime
-import pytz 
+import pytz
+import pathlib
 
 import requests 
 # pip install requests
@@ -14,42 +15,59 @@ from telegram import Bot, ReplyKeyboardMarkup
 from telegram.ext import Updater, MessageHandler, Filters
 
 import random 
+MY_ID = 813531325
 
 load_dotenv()
 ТОКЕН = os.getenv("токен")
 
 бот = Bot(ТОКЕН)
 этот_файл = __file__
-эта_папка = os.path.dirname(этот_файл) # функция позволяет узнать родительскую папку
+эта_папка = pathlib.Path(этот_файл).resolve().parent # функция позволяет узнать родительскую папку
 
-def считать_последний_id():
-    if not os.path.exists(f'{эта_папка}\\last_id'):
-        return 0 
-    with open(f'{эта_папка}\\last_id', 'r', encoding='utf-8') as file:
-        return int(file.read())
 
 def проверить_входящие(айди=None):
-    if not os.path.exists(f'{эта_папка}\\last_id'):
+    def создать_last_msg(update_id):
+        with open(эта_папка / 'last_msg', 'w', encoding='utf-8') as file:
+            file.write(str(update_id))
+
+    def считать_last_msg():
+        with open(эта_папка / 'last_msg', 'r', encoding='utf-8') as file:
+            return int(file.read())
+        
+    сейчас = datetime.datetime.now(pytz.UTC)
+    if not os.path.exists(эта_папка / 'last_msg'):
         while True:
             try:
                 обновления = бот.get_updates()
+                if not обновления:
+                    time.sleep(0.5)
+                    continue
                 break
             except:
                 continue
-        with open(f'{эта_папка}\\last_id', 'w', encoding='utf-8') as file:
-            file.write(str(обновления[-1].update_id))    
+        последнее_сообщение = обновления[-1]
+        if последнее_сообщение.message.date < сейчас:
+            создать_last_msg(последнее_сообщение.update_id)
+        else:
+            создать_last_msg(последнее_сообщение.update_id - 1)
 
-
-    сейчас = datetime.datetime.now(pytz.UTC) # важно указать в скобках now временную зону, которую мы берем из модуля pytz
     while True:
         try:
-            обновления = бот.get_updates(offset=считать_последний_id() + 1) # аргумент offset позволяет получать только те обновления, которые пришли позже указанного update id. Если его не указать, мы получим слишком большой список обновлений.
+            обновления = бот.get_updates(offset=считать_last_msg() + 1)
         except:
-            time.sleep(1) #ждать одну секунду
-            continue
-        if len(обновления) == 0:
             time.sleep(1)
             continue
+        if not обновления:
+            continue
+
+        обновления.reverse()
+        print(len(обновления))
+        for сообщение in обновления:
+            if айди is None or сообщение.effective_user.id == айди:
+                создать_last_msg(сообщение.update_id)
+                print(сообщение.effective_message.text)
+                return сообщение
+        time.sleep(0.5)
 
         последнее_сообщение = обновления[-1]
         if последнее_сообщение.message.date < сейчас:
@@ -213,9 +231,10 @@ def это_сообщение(информация):
     if информация.message.text:
         return информация.effective_message.text
 
-
 def запустить_бота():
     стандартные_кнопки = ReplyKeyboardMarkup([["Камень, Ножницы, Бумага"]], resize_keyboard=True) # внутри ReplyKeyboardMarkup передаем список всех кнопок. Внутри него будет один или несколько списков - один вложенный список одна строка. Кнопки нужно отправить вместе с сообщением. resize_keyboard=True делает кнопки маленькими.
+    отправить_информацию(MY_ID, "Бот запущен", стандартные_кнопки)
+
     while True:
         сообщение = проверить_входящие()
         
